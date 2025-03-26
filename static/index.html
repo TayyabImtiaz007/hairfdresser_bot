@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hairdressing Bot Feedback</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f9; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }
+        h1 { text-align: center; color: #4a4a8c; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
+        .section h2 { color: #4a4a8c; margin-top: 0; }
+        .user-info, .image-preview { margin-bottom: 15px; }
+        .image-preview img { max-width: 100%; border-radius: 5px; margin: 5px 0; }
+        textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; resize: vertical; font-size: 14px; }
+        button { background-color: #4a4a8c; color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        button:hover { background-color: #3a3a6c; }
+        .delete-btn { background-color: #d9534f; padding: 5px 10px; margin-left: 10px; }
+        .delete-btn:hover { background-color: #c9302c; }
+        .output { white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+        #advanced-vector-store-files, #basic-vector-store-files { list-style-type: none; padding: 0; }
+        #advanced-vector-store-files li, #basic-vector-store-files li { margin: 5px 0; display: flex; align-items: center; }
+        .loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #4a4a8c;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hairdressing Bot Feedback</h1>
+
+        <div class="loader-overlay" id="loader">
+            <div class="loader"></div>
+        </div>
+
+        <div class="section user-info">
+            <h2>User Information</h2>
+            <p><strong>User Name:</strong> <span id="user-name">Loading...</span></p>
+            <p><strong>User ID:</strong> <span id="user-id">Loading...</span></p>
+            <p><strong>Adventure Number:</strong> <span id="adventure-number">Loading...</span></p>
+            <button onclick="processNextPost()">Process Next Post</button>
+        </div>
+
+        <div class="section image-preview">
+            <h2>Image Preview</h2>
+            <div id="post-images"></div>
+        </div>
+
+        <div class="section">
+            <h2>Technical Agent</h2>
+            <p><strong>Vector Store Used:</strong> <span id="vector-store-used">N/A</span></p>
+            <p><strong>Input:</strong> <span id="technical-input">Loading...</span></p>
+            <p><strong>Output:</strong></p>
+            <div class="output" id="technical-output">Loading...</div>
+            <p><strong>Advanced Cut Vector Store Files:</strong></p>
+            <ul id="advanced-vector-store-files"></ul>
+            <p><strong>Basic Cut Vector Store Files:</strong></p>
+            <ul id="basic-vector-store-files"></ul>
+            <p><strong>Upload File to Vector Store:</strong></p>
+            <select id="vector-store-select">
+                <option value="advanced">Advanced Cut Vector Store</option>
+                <option value="basic">Basic Cut Vector Store</option>
+            </select>
+            <input type="file" id="file-upload" accept=".pdf,.txt">
+            <button onclick="uploadFile()">Upload File</button>
+            <p><strong>Prompt:</strong></p>
+            <textarea id="technical-prompt"></textarea>
+            <button onclick="updatePrompt('technical')">Update Technical Prompt</button>
+        </div>
+
+        <div class="section">
+            <h2>Historical Agent</h2>
+            <p><strong>Input:</strong> <span id="historical-input">Loading...</span></p>
+            <p><strong>Output:</strong></p>
+            <div class="output" id="historical-output">Loading...</div>
+            <p><strong>Prompt:</strong></p>
+            <textarea id="historical-prompt"></textarea>
+            <button onclick="updatePrompt('historical')">Update Historical Prompt</button>
+        </div>
+
+        <div class="section">
+            <h2>Meta Agent</h2>
+            <p><strong>Input:</strong> <span id="meta-input">Loading...</span></p>
+            <p><strong>Output:</strong></p>
+            <div class="output" id="meta-output">Loading...</div>
+            <p><strong>Prompt:</strong></p>
+            <textarea id="meta-prompt"></textarea>
+            <button onclick="updatePrompt('meta')">Update Meta Prompt</button>
+        </div>
+    </div>
+
+    <script>
+        let ws;
+        let isProcessing = false;
+
+        function connectWebSocket() {
+            ws = new WebSocket('wss://hairdresser-bot.onrender.com/ws');
+            ws.onopen = () => {
+                console.log('Connected to WebSocket server');
+                requestInitialData();
+                requestVectorStoreFiles();
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    alert(data.error);
+                    hideLoader();
+                    isProcessing = false;
+                } else if (data.advanced_vector_store_files || data.basic_vector_store_files) {
+                    if (data.advanced_vector_store_files) {
+                        updateVectorStoreFiles('advanced', data.advanced_vector_store_files);
+                    }
+                    if (data.basic_vector_store_files) {
+                        updateVectorStoreFiles('basic', data.basic_vector_store_files);
+                    }
+                    hideLoader();
+                } else if (data.message) {
+                    alert(data.message);
+                    hideLoader();
+                    isProcessing = false;
+                } else {
+                    updateFrontend(data);
+                    hideLoader();
+                    isProcessing = false;
+                }
+            };
+            ws.onclose = () => {
+                console.log('WebSocket connection closed. Reconnecting...');
+                alert('WebSocket connection closed unexpectedly. Reconnecting...');
+                hideLoader();
+                isProcessing = false;
+                setTimeout(connectWebSocket, 5000); // Increased delay to 5 seconds
+            };
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                alert('WebSocket error occurred. Please try again.');
+                hideLoader();
+                isProcessing = false;
+            };
+        }
+
+        function showLoader() {
+            console.log('Showing loader...');
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.display = 'flex';
+            } else {
+                console.error('Loader element not found in DOM');
+            }
+        }
+
+        function hideLoader() {
+            console.log('Hiding loader...');
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.display = 'none';
+            } else {
+                console.error('Loader element not found in DOM');
+            }
+        }
+
+        function requestInitialData() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'initial_data' }));
+            } else {
+                console.error('WebSocket not open for initial data request');
+            }
+        }
+
+        function requestVectorStoreFiles() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'get_vector_store_files' }));
+            } else {
+                console.error('WebSocket not open for vector store files request');
+            }
+        }
+
+        function updateFrontend(data) {
+            document.getElementById('user-name').textContent = data.user_name || 'N/A';
+            document.getElementById('user-id').textContent = data.user_id || 'N/A';
+            document.getElementById('adventure-number').textContent = data.adventure_number || 'N/A';
+
+            const imageContainer = document.getElementById('post-images');
+            imageContainer.innerHTML = '';
+            if (data.image_urls && data.image_urls.length > 0) {
+                data.image_urls.forEach(url => {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.alt = "Post image";
+                    img.style.display = 'block';
+                    img.onerror = () => {
+                        img.src = 'https://via.placeholder.com/150?text=Image+Not+Found';
+                        img.alt = "Image not found";
+                    };
+                    imageContainer.appendChild(img);
+                });
+            } else {
+                imageContainer.innerHTML = '<p>No images available.</p>';
+            }
+
+            document.getElementById('vector-store-used').textContent = data.vector_store_used || 'N/A';
+            document.getElementById('technical-input').textContent = data.technical_input || 'N/A';
+            document.getElementById('technical-output').textContent = data.technical_feedback || 'N/A';
+            document.getElementById('technical-prompt').value = data.technical_prompt || '';
+
+            document.getElementById('historical-input').textContent = data.historical_input || 'N/A';
+            document.getElementById('historical-output').textContent = data.historical_feedback || 'N/A';
+            document.getElementById('historical-prompt').value = data.historical_prompt || '';
+
+            document.getElementById('meta-input').textContent = data.meta_input || 'N/A';
+            document.getElementById('meta-output').textContent = data.meta_feedback || 'N/A';
+            document.getElementById('meta-prompt').value = data.meta_prompt || '';
+        }
+
+        function updateVectorStoreFiles(type, files) {
+            const fileList = document.getElementById(`${type}-vector-store-files`);
+            fileList.innerHTML = '';
+            files.forEach(file => {
+                const li = document.createElement('li');
+                li.textContent = file.name;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = () => deleteVectorStoreFile(file.id, type);
+                li.appendChild(deleteBtn);
+                fileList.appendChild(li);
+            });
+        }
+
+        function deleteVectorStoreFile(fileId, vectorStoreType) {
+            if (ws.readyState === WebSocket.OPEN) {
+                showLoader();
+                ws.send(JSON.stringify({ type: 'delete_vector_store_file', file_id: fileId, vector_store_type: vectorStoreType }));
+            } else {
+                alert('WebSocket connection not established. Please try again.');
+                hideLoader();
+            }
+        }
+
+        function processNextPost() {
+            console.log('Process Next Post clicked');
+            console.log('WebSocket readyState:', ws.readyState);
+            console.log('isProcessing:', isProcessing);
+            if (ws.readyState === WebSocket.OPEN && !isProcessing) {
+                isProcessing = true;
+                showLoader();
+                ws.send(JSON.stringify({ type: 'process_next_post' }));
+            } else if (isProcessing) {
+                alert('Processing in progress. Please wait.');
+            } else {
+                alert('WebSocket connection not established. Please try again.');
+                hideLoader();
+            }
+        }
+
+        function updatePrompt(agentType) {
+            const prompt = document.getElementById(`${agentType}-prompt`).value;
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'update_prompt',
+                    agent: agentType,
+                    prompt: prompt
+                }));
+            } else {
+                alert('WebSocket connection not established. Please try again.');
+                hideLoader();
+            }
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById('file-upload');
+            const file = fileInput.files[0];
+            const vectorStoreType = document.getElementById('vector-store-select').value;
+            if (!file) {
+                alert('Please select a file to upload.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const fileContent = e.target.result;
+                const hexContent = Array.from(new Uint8Array(fileContent)).map(b => b.toString(16).padStart(2, '0')).join('');
+                if (ws.readyState === WebSocket.OPEN) {
+                    showLoader();
+                    ws.send(JSON.stringify({
+                        type: 'upload_file',
+                        file_name: file.name,
+                        file_content: hexContent,
+                        vector_store_type: vectorStoreType
+                    }));
+                } else {
+                    alert('WebSocket connection not established. Please try again.');
+                    hideLoader();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
