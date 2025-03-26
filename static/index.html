@@ -113,11 +113,16 @@
     <script>
         let ws;
         let isProcessing = false;
+        let retryCount = 0;
+        const maxRetries = 5;
 
         function connectWebSocket() {
-            ws = new WebSocket('wss://hairdresser-bot.onrender.com/ws');
+            // Use a relative WebSocket URL to adapt to the host
+            ws = new WebSocket(`wss://${window.location.host}/ws`);
             ws.onopen = () => {
                 console.log('Connected to WebSocket server');
+                document.getElementById('user-name').textContent = 'Connected, loading data...';
+                retryCount = 0; // Reset retry count on successful connection
                 requestInitialData();
                 requestVectorStoreFiles();
             };
@@ -147,14 +152,19 @@
             };
             ws.onclose = () => {
                 console.log('WebSocket connection closed. Reconnecting...');
-                alert('WebSocket connection closed unexpectedly. Reconnecting...');
-                hideLoader();
-                isProcessing = false;
-                setTimeout(connectWebSocket, 5000); // Increased delay to 5 seconds
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    document.getElementById('user-name').textContent = `Retrying connection (${retryCount}/${maxRetries})...`;
+                    setTimeout(connectWebSocket, 2000); // Retry after 2 seconds
+                } else {
+                    document.getElementById('user-name').textContent = 'Failed to connect after multiple attempts.';
+                    hideLoader();
+                    isProcessing = false;
+                }
             };
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                alert('WebSocket error occurred. Please try again.');
+                document.getElementById('user-name').textContent = 'WebSocket error occurred. Retrying...';
                 hideLoader();
                 isProcessing = false;
             };
@@ -184,7 +194,8 @@
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'initial_data' }));
             } else {
-                console.error('WebSocket not open for initial data request');
+                console.error('WebSocket not open for initial data request, retrying...');
+                setTimeout(requestInitialData, 2000);
             }
         }
 
@@ -192,7 +203,8 @@
             if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'get_vector_store_files' }));
             } else {
-                console.error('WebSocket not open for vector store files request');
+                console.error('WebSocket not open for vector store files request, retrying...');
+                setTimeout(requestVectorStoreFiles, 2000);
             }
         }
 
@@ -318,5 +330,5 @@
 
         connectWebSocket();
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'92688d4c4d074552',t:'MTc0MzAxMjA3Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
