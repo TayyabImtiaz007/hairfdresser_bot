@@ -16,9 +16,10 @@ def fetch_posts_from_website(last_timestamp=None):
         list: A list of formatted post dictionaries.
     """
     # Get the JWT token dynamically
-    token = get_jwt_token()
-    if not token:
-        raise Exception("Failed to obtain JWT token for API authentication.")
+    try:
+        token = get_jwt_token()
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to obtain JWT token for API authentication: {e}")
 
     headers = {"Authorization": f"Bearer {token}"}
     params = {"per_page": 100}
