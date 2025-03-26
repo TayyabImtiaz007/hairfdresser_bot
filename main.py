@@ -300,40 +300,61 @@ async def process_post(post, buddyboss_client):
 
 async def main(debug_mode=False):
     create_tables()
-    # Verify connection without passing a token (handled internally by verify_connection)
-    if not verify_connection():
-        print("Connection to BuddyBoss API failed. Retrying in 60 seconds...")
-        await asyncio.sleep(60)
-        if not verify_connection():
-            raise Exception("Connection failed after retry.")
+    buddyboss_client = None
+    connection_retries = 0
+    max_retries = 5
 
-    buddyboss_client = BuddyBossClient()
+    # Attempt to establish a connection to BuddyBoss API
+    while connection_retries < max_retries:
+        if verify_connection():
+            print("Successfully connected to BuddyBoss API.")
+            buddyboss_client = BuddyBossClient()
+            break
+        else:
+            connection_retries += 1
+            print(f"Connection to BuddyBoss API failed. Retry {connection_retries}/{max_retries}. Retrying in 60 seconds...")
+            await asyncio.sleep(60)
 
-    print("Fetching all posts on first run...")
-    try:
-        posts = fetch_posts_from_website()
-        logging.info(f"Fetched {len(posts)} posts: {posts}")
-        print(f"Fetched {len(posts)} posts.")
-        for post in posts:
-            insert_post(
-                user_id=post["user_id"],
-                name=post.get("name", f"User_{post['user_id']}"),
-                bp_media_id=post["bp_media_id"],
-                adventure_number=post["adventure_number"],
-                adventure_level=post["adventure_level"],
-                content_stripped=post["content_stripped"],
-                post_timestamp=post["timestamp"],
-                activity_id=post["activity_id"]
-            )
-    except Exception as e:
-        logging.error(f"Failed to fetch posts: {e}")
-        print(f"Failed to fetch posts: {e}")
+    if not buddyboss_client:
+        print(f"Failed to connect to BuddyBoss API after {max_retries} retries. Continuing without fetching posts.")
+        logging.error(f"Failed to connect to BuddyBoss API after {max_retries} retries.")
+    else:
+        print("Fetching all posts on first run...")
+        try:
+            posts = fetch_posts_from_website()
+            logging.info(f"Fetched {len(posts)} posts: {posts}")
+            print(f"Fetched {len(posts)} posts.")
+            for post in posts:
+                insert_post(
+                    user_id=post["user_id"],
+                    name=post.get("name", f"User_{post['user_id']}"),
+                    bp_media_id=post["bp_media_id"],
+                    adventure_number=post["adventure_number"],
+                    adventure_level=post["adventure_level"],
+                    content_stripped=post["content_stripped"],
+                    post_timestamp=post["timestamp"],
+                    activity_id=post["activity_id"]
+                )
+        except Exception as e:
+            logging.error(f"Failed to fetch posts: {e}")
+            print(f"Failed to fetch posts: {e}")
 
-    fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS"))
+    fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS", 3600))  # Default to 1 hour if not set
     last_fetch = datetime.now()
 
     while True:
         if (datetime.now() - last_fetch).total_seconds() >= fetch_interval:
+            if not buddyboss_client:
+                print("No BuddyBoss client available. Attempting to reconnect...")
+                if verify_connection():
+                    buddyboss_client = BuddyBossClient()
+                    print("Reconnected to BuddyBoss API.")
+                else:
+                    print("Failed to reconnect to BuddyBoss API. Skipping fetch cycle.")
+                    logging.error("Failed to reconnect to BuddyBoss API during fetch cycle.")
+                    await asyncio.sleep(3600)
+                    continue
+
             last_timestamp = get_latest_post_timestamp()
             print(f"Fetching new posts since {last_timestamp}...")
             try:
