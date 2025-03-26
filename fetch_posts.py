@@ -2,7 +2,7 @@ import requests
 import re
 from auth import get_jwt_token  # Import the function to get the token
 
-BASE_URL = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/wp-json/buddyboss/v1/activity"
+BASE_URL = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/wp-json/buddyboss/v1/activity"  # Correct base URL for activity endpoint
 
 def fetch_posts_from_website(last_timestamp=None):
     """
