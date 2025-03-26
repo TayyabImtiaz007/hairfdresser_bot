@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # BuddyBoss API credentials
-BASE_URL = os.getenv("BUDDYBOSS_BASE_URL", "https://stg-my-hairdresser-508.ew1.rapydapps.cloud")  # No trailing slash
+BASE_URL = "https://my.hairdressing.school"  # Updated to production domain
 USERNAME = os.getenv("WP_USERNAME", "Hairdressing.school Mentor")
 PASSWORD = os.getenv("WP_PASSWORD", "wyCs ESkt qkpT tzrh hsUJ uL6G")
 
@@ -21,7 +21,6 @@ def get_jwt_token():
     global token, token_expiry
     print("🔑 Authenticating to get JWT token...")
     
-    # Ensure the correct authentication URL
     auth_url = f"{BASE_URL}/wp-json/jwt-auth/v1/token"
     
     payload = {
@@ -29,7 +28,6 @@ def get_jwt_token():
         "password": PASSWORD
     }
     try:
-        # Use requests.post with a clear, precise URL
         response = requests.post(auth_url, json=payload, timeout=10)
         
         # Print out the full response for debugging
