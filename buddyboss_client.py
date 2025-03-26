@@ -3,10 +3,11 @@ from auth import get_jwt_token  # Import the function to get the token
 
 class BuddyBossClient:
     def __init__(self):
-        self.base_url = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/"  # Correct base URL for BuddyBoss API
-        self.token = get_jwt_token()  # Get the token dynamically
-        if not self.token:
-            raise Exception("Failed to obtain JWT token for BuddyBossClient.")
+        self.base_url = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/wp-json/buddyboss/v1"  # Correct base URL for BuddyBoss API
+        try:
+            self.token = get_jwt_token()  # Get the token dynamically
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to obtain JWT token for BuddyBossClient: {e}")
         self.headers = {"Authorization": f"Bearer {self.token}"}
 
     def get_user_info(self, user_id):
