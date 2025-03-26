@@ -1,6 +1,6 @@
 import requests
 import re
-from auth import token
+from auth import get_jwt_token  # Import the function to get the token
 
 BASE_URL = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/wp-json/buddyboss/v1/activity"
 
@@ -15,14 +15,21 @@ def fetch_posts_from_website(last_timestamp=None):
     Returns:
         list: A list of formatted post dictionaries.
     """
+    # Get the JWT token dynamically
+    token = get_jwt_token()
+    if not token:
+        raise Exception("Failed to obtain JWT token for API authentication.")
+
     headers = {"Authorization": f"Bearer {token}"}
     params = {"per_page": 100}
     if last_timestamp:
         params["after"] = last_timestamp  # BuddyBoss API supports 'after' parameter for filtering
 
-    response = requests.get(BASE_URL, headers=headers, params=params)
-    if response.status_code != 200:
-        raise Exception(f"Failed to fetch posts: {response.status_code} - {response.text}")
+    try:
+        response = requests.get(BASE_URL, headers=headers, params=params, timeout=10)
+        response.raise_for_status()  # Raises an exception for 4xx/5xx status codes
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to fetch posts: {str(e)}")
 
     posts = response.json()
     formatted_posts = []
