@@ -136,8 +136,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     await send_update_to_clients({"message": "No unprocessed posts available."})
             elif data['type'] == 'get_vector_store_files':
                 try:
-                    advanced_files = client.beta.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
-                    basic_files = client.beta.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
+                    # Updated to use the correct namespace: client.vector_stores (not client.beta.vector_stores)
+                    advanced_files = client.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
+                    basic_files = client.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
                     advanced_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in advanced_files.data]
                     basic_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in basic_files.data]
                     await send_update_to_clients({
@@ -152,10 +153,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 vector_store_type = data['vector_store_type']
                 vector_store_id = ADVANCED_VECTOR_STORE_ID if vector_store_type == 'advanced' else BASIC_VECTOR_STORE_ID
                 try:
-                    client.beta.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
+                    # Updated to use the correct namespace
+                    client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
                     print(f"Deleted file {file_id} from vector store {vector_store_id}")
-                    advanced_files = client.beta.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
-                    basic_files = client.beta.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
+                    advanced_files = client.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
+                    basic_files = client.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
                     advanced_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in advanced_files.data]
                     basic_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in basic_files.data]
                     await send_update_to_clients({
@@ -174,11 +176,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     with open(file_name, "wb") as f:
                         f.write(bytes.fromhex(file_content))
                     file_obj = client.files.create(file=open(file_name, "rb"), purpose="assistants")
-                    client.beta.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_obj.id)
+                    # Updated to use the correct namespace
+                    client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_obj.id)
                     os.remove(file_name)
                     print(f"Uploaded {file_name} to vector store {vector_store_id}")
-                    advanced_files = client.beta.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
-                    basic_files = client.beta.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
+                    advanced_files = client.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
+                    basic_files = client.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
                     advanced_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in advanced_files.data]
                     basic_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in basic_files.data]
                     await send_update_to_clients({
@@ -353,9 +356,16 @@ async def main(debug_mode=False):
                 print(f"Failed to fetch new posts: {e}")
         await asyncio.sleep(3600)
 
-# Modified entry point to run both FastAPI and the main loop
+# Updated entry point to properly await the main coroutine
 if __name__ == "__main__":
-    # Start the main loop in a separate task
-    asyncio.get_event_loop().create_task(main(debug_mode=True))
-    # Start the FastAPI app with uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)), loop="asyncio")
+    async def run_app_and_main():
+        # Start the main loop as a task
+        main_task = asyncio.create_task(main(debug_mode=True))
+        # Start the FastAPI app
+        config = uvicorn.Config(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)), loop="asyncio")
+        server = uvicorn.Server(config)
+        app_task = asyncio.create_task(server.serve())
+        # Wait for both tasks to complete (they won't, as they run indefinitely)
+        await asyncio.gather(main_task, app_task)
+
+    asyncio.run(run_app_and_main())
