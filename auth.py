@@ -1,41 +1,63 @@
+import os
 import requests
+from dotenv import load_dotenv
 
-BASE_URL = "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/"  # Updated to match the target server
-WP_USERNAME = "Hairdressing.school Mentor"  # Replace with your WordPress username
-WP_PASSWORD = "wyCs ESkt qkpT tzrh hsUJ uL6G"  # Replace with your WordPress password
+# Load environment variables
+load_dotenv()
 
-token = None
-token_expiry = 0
+# BuddyBoss API credentials
+BASE_URL = os.getenv("BUDDYBOSS_BASE_URL")
+USERNAME = os.getenv("WP_USERNAME")
+PASSWORD = os.getenv("WP_PASSWORD")
 
-def generate_jwt_token():
-    global token, token_expiry
-    auth_url = f"{BASE_URL}/wp-json/jwt-auth/v1/token"
-    payload = {"username": WP_USERNAME, "password": WP_PASSWORD}
+def get_jwt_token():
+    """
+    Authenticate with the BuddyBoss API and return a JWT token.
+    Returns None if authentication fails.
+    """
+    print("🔑 Authenticating to get JWT token...")
+    auth_url = f"{BASE_URL}/jwt-authorize"
+    payload = {
+        "username": USERNAME,
+        "password": PASSWORD
+    }
     try:
-        print("🔑 Authenticating to get JWT token...")
         response = requests.post(auth_url, json=payload, timeout=10)
         response.raise_for_status()
         data = response.json()
         token = data.get("token")
-        if not token:
-            raise ValueError("No token received from JWT authentication")
-        token_expiry = 3600  # Token expiry is typically 1 hour (3600 seconds)
-        print("✓ JWT token obtained successfully!")
-        return token, token_expiry
-    except requests.RequestException as e:
-        print(f"❌ Error getting JWT token: {e}")
-        raise
+        if token:
+            print("✓ JWT token obtained successfully!")
+            return token
+        else:
+            print("❌ Failed to obtain JWT token: No token in response")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Failed to obtain JWT token: {e}")
+        return None
 
-def verify_connection(current_token):
+def verify_connection(current_token=None):
+    """
+    Verify connection to the BuddyBoss API.
+    If current_token is not provided, it will attempt to fetch a new token.
+    Returns True if the connection is successful, False otherwise.
+    """
+    # If no token is provided, fetch a new one
+    if not current_token:
+        current_token = get_jwt_token()
+        if not current_token:
+            return False
+
+    # Use the token to verify the connection
+    headers = {
+        "Authorization": f"Bearer {current_token}"
+    }
+    test_url = f"{BASE_URL}/test-endpoint"  # Replace with an actual lightweight endpoint if available
     try:
-        headers = {"Authorization": f"Bearer {current_token}"}
-        response = requests.get(f"{BASE_URL}/wp-json/buddyboss/v1/activity", headers=headers, timeout=10)
+        response = requests.get(test_url, headers=headers, timeout=5)
         response.raise_for_status()
-        print(f"Connected to website successfully with JWT token.")
+        print("✓ Connection verified successfully!")
         return True
-    except requests.RequestException as e:
-        print(f"Error connecting to website: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Connection verification failed: {e}")
         return False
-
-# Generate token on import
-token, token_expiry = generate_jwt_token()
