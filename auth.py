@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # BuddyBoss API credentials
-BASE_URL = os.getenv("BUDDYBOSS_BASE_URL")
+BASE_URL = os.getenv("BUDDYBOSS_BASE_URL", "https://stg-my-hairdresser-508.ew1.rapydapps.cloud/wp-json")  # Base URL without /buddyboss/v1/activity
 USERNAME = os.getenv("WP_USERNAME")
 PASSWORD = os.getenv("WP_PASSWORD")
 
@@ -16,7 +16,7 @@ def get_jwt_token():
     Returns None if authentication fails.
     """
     print("🔑 Authenticating to get JWT token...")
-    auth_url = f"{BASE_URL}/jwt-authorize"
+    auth_url = f"{BASE_URL}/wp-json/jwt-auth/v1/token"  # Correct endpoint for JWT authentication
     payload = {
         "username": USERNAME,
         "password": PASSWORD
@@ -52,7 +52,7 @@ def verify_connection(current_token=None):
     headers = {
         "Authorization": f"Bearer {current_token}"
     }
-    test_url = f"{BASE_URL}/test-endpoint"  # Replace with an actual lightweight endpoint if available
+    test_url = f"{BASE_URL}/buddyboss/v1/activity"  # Use a real endpoint to verify connectivity
     try:
         response = requests.get(test_url, headers=headers, timeout=5)
         response.raise_for_status()
