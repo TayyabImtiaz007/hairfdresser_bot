@@ -136,7 +136,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     await send_update_to_clients({"message": "No unprocessed posts available."})
             elif data['type'] == 'get_vector_store_files':
                 try:
-                    # Updated to use the correct namespace: client.vector_stores (not client.beta.vector_stores)
                     advanced_files = client.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
                     basic_files = client.vector_stores.files.list(vector_store_id=BASIC_VECTOR_STORE_ID)
                     advanced_file_list = [{"id": file.id, "name": client.files.retrieve(file_id=file.id).filename} for file in advanced_files.data]
@@ -153,7 +152,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 vector_store_type = data['vector_store_type']
                 vector_store_id = ADVANCED_VECTOR_STORE_ID if vector_store_type == 'advanced' else BASIC_VECTOR_STORE_ID
                 try:
-                    # Updated to use the correct namespace
                     client.vector_stores.files.delete(vector_store_id=vector_store_id, file_id=file_id)
                     print(f"Deleted file {file_id} from vector store {vector_store_id}")
                     advanced_files = client.vector_stores.files.list(vector_store_id=ADVANCED_VECTOR_STORE_ID)
@@ -176,7 +174,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     with open(file_name, "wb") as f:
                         f.write(bytes.fromhex(file_content))
                     file_obj = client.files.create(file=open(file_name, "rb"), purpose="assistants")
-                    # Updated to use the correct namespace
                     client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_obj.id)
                     os.remove(file_name)
                     print(f"Uploaded {file_name} to vector store {vector_store_id}")
@@ -303,8 +300,12 @@ async def process_post(post, buddyboss_client):
 
 async def main(debug_mode=False):
     create_tables()
+    # Verify connection without passing a token (handled internally by verify_connection)
     if not verify_connection():
-        raise Exception("Connection failed.")
+        print("Connection to BuddyBoss API failed. Retrying in 60 seconds...")
+        await asyncio.sleep(60)
+        if not verify_connection():
+            raise Exception("Connection failed after retry.")
 
     buddyboss_client = BuddyBossClient()
 
@@ -356,7 +357,7 @@ async def main(debug_mode=False):
                 print(f"Failed to fetch new posts: {e}")
         await asyncio.sleep(3600)
 
-# Updated entry point to properly await the main coroutine
+# Entry point to run both the main coroutine and the FastAPI app
 if __name__ == "__main__":
     async def run_app_and_main():
         # Start the main loop as a task
