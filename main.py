@@ -381,31 +381,17 @@ async def process_post(post, buddyboss_client, reprocess=False):
         await send_update_to_clients({"error": f"Failed to process post: {str(e)}"})
 
 async def main(debug_mode=False):
-    print("Starting main coroutine...")
-    try:
-        create_tables()
-        print("Database tables created successfully.")
-    except Exception as e:
-        print(f"Error creating database tables: {e}")
-        logging.error(f"Error creating database tables: {e}")
-        return  # Exit the main coroutine but let the server continue running
-
+    create_tables()
     # Verify connection without passing a token (handled internally by verify_connection)
     connection_retries = 0
     max_retries = 5
     while connection_retries < max_retries:
-        try:
-            if verify_connection():
-                print("Successfully connected to BuddyBoss API.")
-                break
-            else:
-                connection_retries += 1
-                print(f"Connection to BuddyBoss API failed. Retry {connection_retries}/{max_retries}. Retrying in 60 seconds...")
-                await asyncio.sleep(60)
-        except Exception as e:
-            print(f"Error verifying BuddyBoss API connection: {e}")
-            logging.error(f"Error verifying BuddyBoss API connection: {e}")
+        if verify_connection():
+            print("Successfully connected to BuddyBoss API.")
+            break
+        else:
             connection_retries += 1
+            print(f"Connection to BuddyBoss API failed. Retry {connection_retries}/{max_retries}. Retrying in 60 seconds...")
             await asyncio.sleep(60)
 
     if connection_retries >= max_retries:
@@ -416,30 +402,25 @@ async def main(debug_mode=False):
         buddyboss_client = BuddyBossClient()
 
     if buddyboss_client:
-        print("Fetching all posts on first run (no timestamp filter)...")
+        print("Fetching all posts on first run...")
         try:
-            # On first run, fetch all posts without a timestamp filter
-            posts = fetch_posts_from_website(last_timestamp=None)
-            logging.info(f"Fetched {len(posts)} posts on first run: {posts}")
-            print(f"Fetched {len(posts)} posts on first run.")
+            posts = fetch_posts_from_website()
+            logging.info(f"Fetched {len(posts)} posts: {posts}")
+            print(f"Fetched {len(posts)} posts.")
             for post in posts:
-                try:
-                    insert_post(
-                        user_id=post["user_id"],
-                        name=post.get("name", f"User_{post['user_id']}"),
-                        bp_media_id=post["bp_media_id"],
-                        adventure_number=post["adventure_number"],
-                        adventure_level=post["adventure_level"],
-                        content_stripped=post["content_stripped"],
-                        post_timestamp=post["timestamp"],
-                        activity_id=post["activity_id"]
-                    )
-                except Exception as e:
-                    print(f"Error inserting post {post.get('activity_id')}: {e}")
-                    logging.error(f"Error inserting post {post.get('activity_id')}: {e}")
+                insert_post(
+                    user_id=post["user_id"],
+                    name=post.get("name", f"User_{post['user_id']}"),
+                    bp_media_id=post["bp_media_id"],
+                    adventure_number=post["adventure_number"],
+                    adventure_level=post["adventure_level"],
+                    content_stripped=post["content_stripped"],
+                    post_timestamp=post["timestamp"],
+                    activity_id=post["activity_id"]
+                )
         except Exception as e:
-            logging.error(f"Failed to fetch posts on first run: {e}")
-            print(f"Failed to fetch posts on first run: {e}")
+            logging.error(f"Failed to fetch posts: {e}")
+            print(f"Failed to fetch posts: {e}")
 
     fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS", "3600"))  # Default to 1 hour if not set
     last_fetch = datetime.now()
@@ -465,20 +446,16 @@ async def main(debug_mode=False):
                     logging.info(f"Fetched {len(new_posts)} new posts: {new_posts}")
                     print(f"Fetched {len(new_posts)} new posts.")
                     for post in new_posts:
-                        try:
-                            insert_post(
-                                user_id=post["user_id"],
-                                name=post.get("name", f"User_{post['user_id']}"),
-                                bp_media_id=post["bp_media_id"],
-                                adventure_number=post["adventure_number"],
-                                adventure_level=post["adventure_level"],
-                                content_stripped=post["content_stripped"],
-                                post_timestamp=post["timestamp"],
-                                activity_id=post["activity_id"]
-                            )
-                        except Exception as e:
-                            print(f"Error inserting new post {post.get('activity_id')}: {e}")
-                            logging.error(f"Error inserting new post {post.get('activity_id')}: {e}")
+                        insert_post(
+                            user_id=post["user_id"],
+                            name=post.get("name", f"User_{post['user_id']}"),
+                            bp_media_id=post["bp_media_id"],
+                            adventure_number=post["adventure_number"],
+                            adventure_level=post["adventure_level"],
+                            content_stripped=post["content_stripped"],
+                            post_timestamp=post["timestamp"],
+                            activity_id=post["activity_id"]
+                        )
                     last_fetch = datetime.now()
                 except Exception as e:
                     logging.error(f"Failed to fetch new posts: {e}")
@@ -492,23 +469,12 @@ async def main(debug_mode=False):
 # Entry point to run both the main coroutine and the FastAPI app
 if __name__ == "__main__":
     async def run_app_and_main():
-        # Log the port being used
-        port = int(os.getenv("PORT", 8000))
-        print(f"Starting FastAPI server on port {port}...")
-
-        # Start the FastAPI app first to ensure port binding
-        config = uvicorn.Config(app, host="0.0.0.0", port=port, loop="asyncio")
+        # Start the main loop as a task
+        main_task = asyncio.create_task(main(debug_mode=True))
+        # Start the FastAPI app
+        config = uvicorn.Config(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)), loop="asyncio")
         server = uvicorn.Server(config)
         app_task = asyncio.create_task(server.serve())
-        print("FastAPI server task started.")
-
-        # Wait briefly to ensure the server has bound to the port
-        await asyncio.sleep(1)
-
-        # Start the main loop as a task
-        print("Starting main coroutine task...")
-        main_task = asyncio.create_task(main(debug_mode=True))
-
         # Wait for both tasks to complete (they won't, as they run indefinitely)
         try:
             await asyncio.gather(main_task, app_task)
@@ -519,5 +485,4 @@ if __name__ == "__main__":
             await asyncio.sleep(60)
             await run_app_and_main()  # Retry
 
-    print("Starting application...")
     asyncio.run(run_app_and_main())
