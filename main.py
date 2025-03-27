@@ -402,11 +402,12 @@ async def main(debug_mode=False):
         buddyboss_client = BuddyBossClient()
 
     if buddyboss_client:
-        print("Fetching all posts on first run...")
+        print("Fetching all posts on first run (no timestamp filter)...")
         try:
-            posts = fetch_posts_from_website()
-            logging.info(f"Fetched {len(posts)} posts: {posts}")
-            print(f"Fetched {len(posts)} posts.")
+            # On first run, fetch all posts without a timestamp filter
+            posts = fetch_posts_from_website(last_timestamp=None)
+            logging.info(f"Fetched {len(posts)} posts on first run: {posts}")
+            print(f"Fetched {len(posts)} posts on first run.")
             for post in posts:
                 insert_post(
                     user_id=post["user_id"],
@@ -419,8 +420,8 @@ async def main(debug_mode=False):
                     activity_id=post["activity_id"]
                 )
         except Exception as e:
-            logging.error(f"Failed to fetch posts: {e}")
-            print(f"Failed to fetch posts: {e}")
+            logging.error(f"Failed to fetch posts on first run: {e}")
+            print(f"Failed to fetch posts on first run: {e}")
 
     fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS", "3600"))  # Default to 1 hour if not set
     last_fetch = datetime.now()
