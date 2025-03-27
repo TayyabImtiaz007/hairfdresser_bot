@@ -13,11 +13,14 @@
         .user-info, .image-preview { margin-bottom: 15px; }
         .image-preview img { max-width: 100%; border-radius: 5px; margin: 5px 0; }
         textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; resize: vertical; font-size: 14px; }
-        button { background-color: #4a4a8c; color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        button { background-color: #4a4a8c; color: #fff; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px; margin-right: 10px; }
         button:hover { background-color: #3a3a6c; }
         .delete-btn { background-color: #d9534f; padding: 5px 10px; margin-left: 10px; }
         .delete-btn:hover { background-color: #c9302c; }
+        .preview-btn { background-color: #5cb85c; }
+        .preview-btn:hover { background-color: #4cae4c; }
         .output { white-space: pre-wrap; background: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .preview-output { white-space: pre-wrap; background: #e0ffe0; padding: 10px; border-radius: 5px; margin-top: 10px; }
         #advanced-vector-store-files, #basic-vector-store-files { list-style-type: none; padding: 0; }
         #advanced-vector-store-files li, #basic-vector-store-files li { margin: 5px 0; display: flex; align-items: center; }
         .loader-overlay {
@@ -60,6 +63,7 @@
             <p><strong>User ID:</strong> <span id="user-id">Loading...</span></p>
             <p><strong>Adventure Number:</strong> <span id="adventure-number">Loading...</span></p>
             <button onclick="processNextPost()">Process Next Post</button>
+            <button onclick="reprocessCurrentPost()">Reprocess Current Post</button>
         </div>
 
         <div class="section image-preview">
@@ -73,6 +77,7 @@
             <p><strong>Input:</strong> <span id="technical-input">Loading...</span></p>
             <p><strong>Output:</strong></p>
             <div class="output" id="technical-output">Loading...</div>
+            <div class="preview-output" id="technical-preview-output" style="display: none;"></div>
             <p><strong>Advanced Cut Vector Store Files:</strong></p>
             <ul id="advanced-vector-store-files"></ul>
             <p><strong>Basic Cut Vector Store Files:</strong></p>
@@ -87,6 +92,7 @@
             <p><strong>Prompt:</strong></p>
             <textarea id="technical-prompt"></textarea>
             <button onclick="updatePrompt('technical')">Update Technical Prompt</button>
+            <button class="preview-btn" onclick="previewPromptResponse('technical')">Preview Response</button>
         </div>
 
         <div class="section">
@@ -94,9 +100,11 @@
             <p><strong>Input:</strong> <span id="historical-input">Loading...</span></p>
             <p><strong>Output:</strong></p>
             <div class="output" id="historical-output">Loading...</div>
+            <div class="preview-output" id="historical-preview-output" style="display: none;"></div>
             <p><strong>Prompt:</strong></p>
             <textarea id="historical-prompt"></textarea>
             <button onclick="updatePrompt('historical')">Update Historical Prompt</button>
+            <button class="preview-btn" onclick="previewPromptResponse('historical')">Preview Response</button>
         </div>
 
         <div class="section">
@@ -104,9 +112,11 @@
             <p><strong>Input:</strong> <span id="meta-input">Loading...</span></p>
             <p><strong>Output:</strong></p>
             <div class="output" id="meta-output">Loading...</div>
+            <div class="preview-output" id="meta-preview-output" style="display: none;"></div>
             <p><strong>Prompt:</strong></p>
             <textarea id="meta-prompt"></textarea>
             <button onclick="updatePrompt('meta')">Update Meta Prompt</button>
+            <button class="preview-btn" onclick="previewPromptResponse('meta')">Preview Response</button>
         </div>
     </div>
 
@@ -114,7 +124,8 @@
         let ws;
         let isProcessing = false;
         let retryCount = 0;
-        const maxRetries = 5;
+        const maxRetries = 10;
+        const retryDelay = 5000; // 5 seconds
 
         function connectWebSocket() {
             // Use a relative WebSocket URL to adapt to the host
@@ -132,6 +143,12 @@
                     alert(data.error);
                     hideLoader();
                     isProcessing = false;
+                } else if (data.preview_response) {
+                    const { agent, feedback } = data.preview_response;
+                    const previewOutput = document.getElementById(`${agent}-preview-output`);
+                    previewOutput.textContent = feedback || 'N/A';
+                    previewOutput.style.display = 'block';
+                    hideLoader();
                 } else if (data.advanced_vector_store_files || data.basic_vector_store_files) {
                     if (data.advanced_vector_store_files) {
                         updateVectorStoreFiles('advanced', data.advanced_vector_store_files);
@@ -148,14 +165,21 @@
                     updateFrontend(data);
                     hideLoader();
                     isProcessing = false;
+                    // Hide preview outputs after processing a new post
+                    document.getElementById('technical-preview-output').style.display = 'none';
+                    document.getElementById('historical-preview-output').style.display = 'none';
+                    document.getElementById('meta-preview-output').style.display = 'none';
                 }
             };
-            ws.onclose = () => {
-                console.log('WebSocket connection closed. Reconnecting...');
+            ws.onclose = (event) => {
+                console.log(`WebSocket connection closed: Code ${event.code}, Reason: ${event.reason}`);
+                if (event.code === 1006) {
+                    console.log('Abnormal closure detected. Attempting to reconnect...');
+                }
                 if (retryCount < maxRetries) {
                     retryCount++;
                     document.getElementById('user-name').textContent = `Retrying connection (${retryCount}/${maxRetries})...`;
-                    setTimeout(connectWebSocket, 2000); // Retry after 2 seconds
+                    setTimeout(connectWebSocket, retryDelay);
                 } else {
                     document.getElementById('user-name').textContent = 'Failed to connect after multiple attempts.';
                     hideLoader();
@@ -286,6 +310,22 @@
             }
         }
 
+        function reprocessCurrentPost() {
+            console.log('Reprocess Current Post clicked');
+            console.log('WebSocket readyState:', ws.readyState);
+            console.log('isProcessing:', isProcessing);
+            if (ws.readyState === WebSocket.OPEN && !isProcessing) {
+                isProcessing = true;
+                showLoader();
+                ws.send(JSON.stringify({ type: 'reprocess_current_post' }));
+            } else if (isProcessing) {
+                alert('Processing in progress. Please wait.');
+            } else {
+                alert('WebSocket connection not established. Please try again.');
+                hideLoader();
+            }
+        }
+
         function updatePrompt(agentType) {
             const prompt = document.getElementById(`${agentType}-prompt`).value;
             if (ws.readyState === WebSocket.OPEN) {
@@ -294,6 +334,24 @@
                     agent: agentType,
                     prompt: prompt
                 }));
+            } else {
+                alert('WebSocket connection not established. Please try again.');
+                hideLoader();
+            }
+        }
+
+        function previewPromptResponse(agentType) {
+            const prompt = document.getElementById(`${agentType}-prompt`).value;
+            if (ws.readyState === WebSocket.OPEN && !isProcessing) {
+                isProcessing = true;
+                showLoader();
+                ws.send(JSON.stringify({
+                    type: 'preview_prompt_response',
+                    agent: agentType,
+                    prompt: prompt
+                }));
+            } else if (isProcessing) {
+                alert('Processing in progress. Please wait.');
             } else {
                 alert('WebSocket connection not established. Please try again.');
                 hideLoader();
@@ -330,5 +388,5 @@
 
         connectWebSocket();
     </script>
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'92688d4c4d074552',t:'MTc0MzAxMjA3Mi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
