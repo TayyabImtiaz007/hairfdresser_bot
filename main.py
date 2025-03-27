@@ -300,25 +300,26 @@ async def process_post(post, buddyboss_client):
 
 async def main(debug_mode=False):
     create_tables()
-    buddyboss_client = None
+    # Verify connection without passing a token (handled internally by verify_connection)
     connection_retries = 0
     max_retries = 5
-
-    # Attempt to establish a connection to BuddyBoss API
     while connection_retries < max_retries:
         if verify_connection():
             print("Successfully connected to BuddyBoss API.")
-            buddyboss_client = BuddyBossClient()
             break
         else:
             connection_retries += 1
             print(f"Connection to BuddyBoss API failed. Retry {connection_retries}/{max_retries}. Retrying in 60 seconds...")
             await asyncio.sleep(60)
 
-    if not buddyboss_client:
+    if connection_retries >= max_retries:
         print(f"Failed to connect to BuddyBoss API after {max_retries} retries. Continuing without fetching posts.")
         logging.error(f"Failed to connect to BuddyBoss API after {max_retries} retries.")
+        buddyboss_client = None
     else:
+        buddyboss_client = BuddyBossClient()
+
+    if buddyboss_client:
         print("Fetching all posts on first run...")
         try:
             posts = fetch_posts_from_website()
@@ -339,44 +340,49 @@ async def main(debug_mode=False):
             logging.error(f"Failed to fetch posts: {e}")
             print(f"Failed to fetch posts: {e}")
 
-    fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS", 3600))  # Default to 1 hour if not set
+    fetch_interval = int(os.getenv("FETCH_INTERVAL_SECONDS", "3600"))  # Default to 1 hour if not set
     last_fetch = datetime.now()
 
     while True:
-        if (datetime.now() - last_fetch).total_seconds() >= fetch_interval:
-            if not buddyboss_client:
-                print("No BuddyBoss client available. Attempting to reconnect...")
-                if verify_connection():
-                    buddyboss_client = BuddyBossClient()
-                    print("Reconnected to BuddyBoss API.")
-                else:
-                    print("Failed to reconnect to BuddyBoss API. Skipping fetch cycle.")
-                    logging.error("Failed to reconnect to BuddyBoss API during fetch cycle.")
-                    await asyncio.sleep(3600)
-                    continue
+        try:
+            if (datetime.now() - last_fetch).total_seconds() >= fetch_interval:
+                if not buddyboss_client:
+                    print("No BuddyBoss client available. Attempting to reconnect...")
+                    if verify_connection():
+                        buddyboss_client = BuddyBossClient()
+                        print("Reconnected to BuddyBoss API.")
+                    else:
+                        print("Failed to reconnect to BuddyBoss API. Skipping fetch cycle.")
+                        logging.error("Failed to reconnect to BuddyBoss API during fetch cycle.")
+                        await asyncio.sleep(3600)
+                        continue
 
-            last_timestamp = get_latest_post_timestamp()
-            print(f"Fetching new posts since {last_timestamp}...")
-            try:
-                new_posts = fetch_posts_from_website(last_timestamp)
-                logging.info(f"Fetched {len(new_posts)} new posts: {new_posts}")
-                print(f"Fetched {len(new_posts)} new posts.")
-                for post in new_posts:
-                    insert_post(
-                        user_id=post["user_id"],
-                        name=post.get("name", f"User_{post['user_id']}"),
-                        bp_media_id=post["bp_media_id"],
-                        adventure_number=post["adventure_number"],
-                        adventure_level=post["adventure_level"],
-                        content_stripped=post["content_stripped"],
-                        post_timestamp=post["timestamp"],
-                        activity_id=post["activity_id"]
-                    )
-                last_fetch = datetime.now()
-            except Exception as e:
-                logging.error(f"Failed to fetch new posts: {e}")
-                print(f"Failed to fetch new posts: {e}")
-        await asyncio.sleep(3600)
+                last_timestamp = get_latest_post_timestamp()
+                print(f"Fetching new posts since {last_timestamp}...")
+                try:
+                    new_posts = fetch_posts_from_website(last_timestamp)
+                    logging.info(f"Fetched {len(new_posts)} new posts: {new_posts}")
+                    print(f"Fetched {len(new_posts)} new posts.")
+                    for post in new_posts:
+                        insert_post(
+                            user_id=post["user_id"],
+                            name=post.get("name", f"User_{post['user_id']}"),
+                            bp_media_id=post["bp_media_id"],
+                            adventure_number=post["adventure_number"],
+                            adventure_level=post["adventure_level"],
+                            content_stripped=post["content_stripped"],
+                            post_timestamp=post["timestamp"],
+                            activity_id=post["activity_id"]
+                        )
+                    last_fetch = datetime.now()
+                except Exception as e:
+                    logging.error(f"Failed to fetch new posts: {e}")
+                    print(f"Failed to fetch new posts: {e}")
+            await asyncio.sleep(3600)
+        except Exception as e:
+            logging.error(f"Error in main loop: {e}")
+            print(f"Error in main loop: {e}")
+            await asyncio.sleep(60)  # Wait before retrying
 
 # Entry point to run both the main coroutine and the FastAPI app
 if __name__ == "__main__":
