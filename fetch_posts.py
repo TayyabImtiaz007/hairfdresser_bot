@@ -2,7 +2,7 @@ import requests
 import re
 from auth import get_jwt_token  # Import the function to get the token
 
-BASE_URL = "https://my.hairdressing.school/wp-json/buddyboss/v1/activity"  # Correct base URL for activity endpoint
+BASE_URL = "https://my.hairdressing.school/wp-json/buddyboss/v1/activity"  # Updated to production URL
 
 def fetch_posts_from_website(last_timestamp=None):
     """
@@ -16,9 +16,11 @@ def fetch_posts_from_website(last_timestamp=None):
     Returns:
         list: A list of formatted post dictionaries.
     """
+    print("Fetching posts from BuddyBoss API...")
     # Get the JWT token dynamically
     try:
         token = get_jwt_token()
+        print("JWT token obtained successfully.")
     except requests.exceptions.RequestException as e:
         raise Exception(f"Failed to obtain JWT token for API authentication: {e}")
 
@@ -32,13 +34,16 @@ def fetch_posts_from_website(last_timestamp=None):
 
     while True:
         params["page"] = page
+        print(f"Fetching page {page} with params: {params}...")
         try:
             response = requests.get(BASE_URL, headers=headers, params=params, timeout=10)
             response.raise_for_status()  # Raises an exception for 4xx/5xx status codes
+            print(f"Page {page} fetched successfully. Status code: {response.status_code}")
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to fetch posts on page {page}: {str(e)}")
 
         posts = response.json()
+        print(f"Page {page} returned {len(posts)} posts.")
         if not posts:  # If no more posts are returned, break the loop
             break
 
@@ -84,4 +89,5 @@ def fetch_posts_from_website(last_timestamp=None):
 
     # Sort posts by timestamp to ensure chronological order
     all_posts.sort(key=lambda x: x["timestamp"])
+    print(f"Total posts fetched: {len(all_posts)}")
     return all_posts
